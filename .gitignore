@@ -4,7 +4,9 @@
 .next
 node_modules
 dist
+out
 coverage
+outputs
 *.log
 tsconfig.tsbuildinfo
 .DS_Store
