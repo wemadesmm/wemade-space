@@ -160,6 +160,16 @@ export async function saveDocument(document: DocumentItem) {
   });
 }
 
+export async function saveEvent(event: CalendarEvent) {
+  await upsert("calendar_events", {
+    id: event.id,
+    project_id: event.projectId || null,
+    title: event.title,
+    starts_at: `${event.date}T${event.time || "00:00"}:00`,
+    visibility: event.visibility
+  });
+}
+
 export async function saveArticle(article: KnowledgeArticle) {
   await upsert("knowledge_articles", {
     id: article.id,

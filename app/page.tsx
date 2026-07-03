@@ -40,6 +40,7 @@ import {
   onAuthChange,
   saveArticle,
   saveDocument,
+  saveEvent,
   saveProject,
   saveSite,
   saveTask,
@@ -52,7 +53,7 @@ import {
 import { isSupabaseEnabled } from "@/lib/supabase";
 import { makeChange, loadSpaceData, saveSpaceData } from "@/lib/store";
 import { cn } from "@/lib/utils";
-import { DocumentItem, KnowledgeArticle, Project, Role, SitePage, SpaceData, Status, Task, User } from "@/lib/types";
+import { CalendarEvent, DocumentItem, KnowledgeArticle, Project, Role, SitePage, SpaceData, Status, Task, User } from "@/lib/types";
 
 type Section =
   | "home"
@@ -106,6 +107,14 @@ const articleSchema = z.object({
   title: z.string().min(3),
   category: z.enum(["process", "culture", "client", "onboarding"]),
   body: z.string().min(10)
+});
+
+const eventSchema = z.object({
+  title: z.string().min(3),
+  projectId: z.string().optional(),
+  date: z.string().min(1),
+  time: z.string().min(1),
+  visibility: z.enum(["internal", "client", "all"])
 });
 
 const statusLabels: Record<Status, string> = {
@@ -433,7 +442,19 @@ export default function WemadeSpace() {
                   onArchive={(id) => archiveEntity("article", id)}
                 />
               )}
-              {section === "calendar" && <CalendarView events={events} />}
+              {section === "calendar" && (
+                <CalendarView
+                  data={data}
+                  user={user}
+                  events={events}
+                  onSave={(event) => {
+                    const exists = data.events.some((item) => item.id === event.id);
+                    const eventsNext = exists ? data.events.map((item) => (item.id === event.id ? event : item)) : [event, ...data.events];
+                    commit({ ...data, events: eventsNext }, "Календарь", exists ? "событие обновлено" : "событие создано");
+                    void persistRemote("Календарь", exists ? "событие обновлено" : "событие создано", () => saveEvent(event));
+                  }}
+                />
+              )}
               {section === "team" && <TeamView data={data} user={user} />}
               {section === "clients" && <ClientsView data={data} />}
               {section === "reports" && <ReportsView projects={projects} documents={documents} />}
@@ -855,6 +876,22 @@ function DocumentForm({ data, document, onSave, onClose }: { data: SpaceData; do
   return <Modal title="Документ" onClose={onClose}><form onSubmit={form.handleSubmit((values) => onSave({ ...document, ...values, projectId: values.projectId || undefined, updatedAt: new Date().toISOString().slice(0, 10) }))} className="form-grid"><Input form={form} name="title" label="Название" /><Select form={form} name="projectId" label="Проект" options={[["", "Без проекта"], ...data.projects.map((item) => [item.id, item.name] as [string, string])]} /><Select form={form} name="type" label="Тип" options={[["brief", "Бриф"], ["contract", "Договор"], ["report", "Отчет"], ["creative", "Креатив"], ["note", "Заметка"]]} /><Select form={form} name="status" label="Статус" options={[["draft", "Черновик"], ["approval", "Согласование"], ["approved", "Согласован"], ["archived", "Архив"]]} /><Checkbox form={form} name="clientVisible" label="Виден клиенту" /><button className="btn-primary md:col-span-2">Сохранить</button></form></Modal>;
 }
 
+function EventForm({ data, event, onSave, onClose }: { data: SpaceData; event: CalendarEvent; onSave: (event: CalendarEvent) => void; onClose: () => void }) {
+  const form = useForm<any>({ resolver: zodResolver(eventSchema), defaultValues: event });
+  return (
+    <Modal title="Событие" onClose={onClose}>
+      <form onSubmit={form.handleSubmit((values) => onSave({ ...event, ...values, projectId: values.projectId || undefined }))} className="form-grid">
+        <Input form={form} name="title" label="Название" />
+        <Select form={form} name="projectId" label="Проект" options={[["", "Без проекта"], ...data.projects.map((item) => [item.id, item.name] as [string, string])]} />
+        <Input form={form} name="date" label="Дата" type="date" />
+        <Input form={form} name="time" label="Время" type="time" />
+        <Select form={form} name="visibility" label="Видимость" options={[["internal", "Только команда"], ["client", "Клиент и команда"], ["all", "Все"]]} />
+        <button className="btn-primary md:col-span-2">Сохранить</button>
+      </form>
+    </Modal>
+  );
+}
+
 function ArticleForm({ article, onSave, onClose }: { article: KnowledgeArticle; onSave: (article: KnowledgeArticle) => void; onClose: () => void }) {
   const form = useForm<any>({ resolver: zodResolver(articleSchema), defaultValues: article });
   return <Modal title="Статья базы знаний" onClose={onClose}><form onSubmit={form.handleSubmit((values) => onSave({ ...article, ...values }))} className="form-grid"><Input form={form} name="title" label="Название" /><Select form={form} name="category" label="Категория" options={[["process", "Процессы"], ["culture", "Культура"], ["client", "Клиенты"], ["onboarding", "Новичкам"]]} /><label className="md:col-span-2 text-sm font-semibold">Текст<textarea {...form.register("body")} className="mt-1 min-h-28 w-full rounded-lg border border-wm-line p-3 outline-none focus:border-wm-blue" /></label><button className="btn-primary md:col-span-2">Сохранить</button></form></Modal>;
@@ -892,8 +929,43 @@ function MyWork({ user, tasks, events }: { user: User; tasks: Task[]; events: Re
   return <div className="grid gap-5 md:grid-cols-2"><Card title="Мои задачи"><div className="space-y-3">{tasks.filter((item) => item.assigneeId === user.id).map((item) => <div key={item.id} className="rounded-lg bg-wm-bg p-3 text-sm">{item.title}<p className="text-xs text-wm-muted">{item.due}</p></div>)}</div></Card><Card title="Сегодня и дальше"><List items={events.map((item) => `${item.date} ${item.time} · ${item.title}`)} /></Card></div>;
 }
 
-function CalendarView({ events }: { events: ReturnType<typeof visibleEvents> }) {
-  return <Stack title="Календарь"><div className="grid gap-3 md:grid-cols-2">{events.map((item) => <div key={item.id} className="rounded-xl border border-wm-line bg-white p-4"><Clock3 className="mb-3 h-5 w-5 text-wm-blue" /><h3 className="font-black">{item.title}</h3><p className="text-sm text-wm-muted">{item.date} · {item.time}</p></div>)}</div></Stack>;
+function CalendarView({ data, user, events, onSave }: { data: SpaceData; user: User; events: ReturnType<typeof visibleEvents>; onSave: (event: CalendarEvent) => void }) {
+  const [editing, setEditing] = useState<CalendarEvent | null>(null);
+  const sortedEvents = [...events].sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+  const grouped = sortedEvents.reduce<Record<string, CalendarEvent[]>>((acc, event) => {
+    acc[event.date] = [...(acc[event.date] ?? []), event];
+    return acc;
+  }, {});
+
+  return (
+    <Stack title="Календарь" action={!isClient(user) && <button onClick={() => setEditing(emptyEvent())} className="btn-primary"><Plus className="h-4 w-4" />Событие</button>}>
+      <div className="grid gap-4 xl:grid-cols-[320px_1fr]">
+        <Card title="Ближайшее">
+          <List items={sortedEvents.slice(0, 6).map((item) => `${item.date} ${item.time} · ${item.title}`)} />
+        </Card>
+        <div className="space-y-4">
+          {Object.entries(grouped).map(([date, items]) => (
+            <section key={date} className="rounded-xl border border-wm-line bg-white p-4">
+              <h3 className="mb-3 font-black">{date}</h3>
+              <div className="grid gap-3 md:grid-cols-2">
+                {items.map((item) => (
+                  <article key={item.id} className="rounded-lg bg-wm-bg p-3">
+                    <Clock3 className="mb-2 h-4 w-4 text-wm-blue" />
+                    <h4 className="font-bold">{item.title}</h4>
+                    <p className="text-sm text-wm-muted">{item.time} · {visibilityLabel(item.visibility)}</p>
+                    {item.projectId && <p className="mt-1 text-xs text-wm-muted">{data.projects.find((project) => project.id === item.projectId)?.name}</p>}
+                    {!isClient(user) && <button onClick={() => setEditing(item)} className="btn-ghost mt-3">Изменить</button>}
+                  </article>
+                ))}
+              </div>
+            </section>
+          ))}
+          {!sortedEvents.length && <Card title="Пока пусто"><p className="text-sm text-wm-muted">Добавьте первое событие, созвон, дедлайн или внутреннюю встречу.</p></Card>}
+        </div>
+      </div>
+      {editing && <EventForm data={data} event={editing} onClose={() => setEditing(null)} onSave={(event) => { onSave(event); setEditing(null); }} />}
+    </Stack>
+  );
 }
 
 function TeamView({ data, user }: { data: SpaceData; user: User }) {
@@ -987,6 +1059,10 @@ function isSectionEnabled(data: SpaceData, section: Section) {
   return module ? module.enabled : true;
 }
 
+function visibilityLabel(visibility: CalendarEvent["visibility"]) {
+  return visibility === "internal" ? "Только команда" : visibility === "client" ? "Клиент и команда" : "Все";
+}
+
 function emptyProject(data: SpaceData): Project {
   return { id: crypto.randomUUID(), companyId: data.companies[0]?.id ?? "", name: "", status: "active", ownerId: data.users[0]?.id ?? "", deadline: new Date().toISOString().slice(0, 10), progress: 0, risk: "Рисков нет", nextStep: "Определить следующий шаг", budgetVisibleToClient: false };
 }
@@ -997,6 +1073,10 @@ function emptyTask(data: SpaceData, user: User): Task {
 
 function emptyDocument(): DocumentItem {
   return { id: crypto.randomUUID(), title: "", type: "brief", status: "draft", clientVisible: false, updatedAt: new Date().toISOString().slice(0, 10) };
+}
+
+function emptyEvent(): CalendarEvent {
+  return { id: crypto.randomUUID(), title: "", date: new Date().toISOString().slice(0, 10), time: "10:00", visibility: "internal" };
 }
 
 function Input({ form, name, label, type = "text" }: { form: any; name: string; label: string; type?: string }) {
