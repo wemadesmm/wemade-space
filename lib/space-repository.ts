@@ -30,12 +30,12 @@ export async function getAuthState(): Promise<AuthState> {
   }
 
   const supabase = requiredClient();
-  const { data, error } = await supabase.auth.getUser();
+  const { data, error } = await supabase.auth.getSession();
 
   return {
     enabled: true,
     loading: false,
-    supabaseUser: data.user ?? null,
+    supabaseUser: data.session?.user ?? null,
     error: error?.message
   };
 }

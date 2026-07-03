@@ -114,6 +114,19 @@ const statusLabels: Record<Status, string> = {
   archived: "Архив"
 };
 
+async function withTimeout<T>(promise: Promise<T>, milliseconds: number, message: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(message)), milliseconds);
+  });
+
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
 const navInternal: { id: Section; label: string; icon: typeof Home }[] = [
   { id: "home", label: "Главная", icon: LayoutDashboard },
   { id: "my", label: "Моя работа", icon: Home },
@@ -202,17 +215,28 @@ export default function WemadeSpace() {
 
   async function refreshData() {
     setLoadingData(true);
-    const nextAuth = await getAuthState();
-    setAuth(nextAuth);
+    let nextAuth: AuthState;
+    try {
+      nextAuth = await withTimeout(getAuthState(), 8000, "Supabase слишком долго отвечает. Обновите страницу или попробуйте войти еще раз.");
+      setAuth(nextAuth);
+    } catch (error) {
+      setAuth({ enabled: true, loading: false, supabaseUser: null, error: error instanceof Error ? error.message : "Не удалось проверить вход" });
+      setRemoteMode(false);
+      setData(loadSpaceData());
+      setLoadingData(false);
+      return;
+    }
 
     if (nextAuth.enabled && nextAuth.supabaseUser) {
       try {
-        const remoteData = await loadSpaceDataFromSupabase();
+        const remoteData = await withTimeout(loadSpaceDataFromSupabase(), 10000, "База данных Supabase слишком долго отвечает. Открываю сайт в безопасном режиме.");
         setData(remoteData);
         setCurrentUserId(nextAuth.supabaseUser.id);
         setRemoteMode(true);
         setNotice("");
       } catch (error) {
+        setRemoteMode(false);
+        setData(loadSpaceData());
         setNotice(error instanceof Error ? error.message : "Не удалось загрузить Supabase-данные");
       } finally {
         setLoadingData(false);
