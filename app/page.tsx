@@ -48,6 +48,7 @@ import {
   signUp,
   writeChange
 } from "@/lib/space-repository";
+import { isSupabaseEnabled } from "@/lib/supabase";
 import { makeChange, loadSpaceData, saveSpaceData } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { DocumentItem, KnowledgeArticle, Project, SitePage, SpaceData, Status, Task, User } from "@/lib/types";
@@ -169,9 +170,9 @@ export default function WemadeSpace() {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [sort, setSort] = useState("deadline");
-  const [auth, setAuth] = useState<AuthState>({ enabled: false, loading: true, supabaseUser: null });
+  const [auth, setAuth] = useState<AuthState>({ enabled: isSupabaseEnabled(), loading: false, supabaseUser: null });
   const [remoteMode, setRemoteMode] = useState(false);
-  const [loadingData, setLoadingData] = useState(true);
+  const [loadingData, setLoadingData] = useState(false);
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
