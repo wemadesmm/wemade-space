@@ -194,6 +194,20 @@ export default function WemadeSpace() {
     if (!remoteMode && !loadingData) saveSpaceData(data);
   }, [data, loadingData, remoteMode]);
 
+  useEffect(() => {
+    if (!auth.enabled || !auth.supabaseUser || !remoteMode) return;
+    const interval = window.setInterval(() => {
+      void loadSpaceDataFromSupabase()
+        .then((fresh) => {
+          setData(fresh);
+          setNotice("");
+        })
+        .catch((error) => setNotice(error instanceof Error ? error.message : "Не удалось обновить данные"));
+    }, 15000);
+
+    return () => window.clearInterval(interval);
+  }, [auth.enabled, auth.supabaseUser, remoteMode]);
+
   const user = data.users.find((item) => item.id === currentUserId) ?? data.users[0] ?? demoData.users[0];
   const nav = (isClient(user) ? navClient : navInternal).filter((item) => item.id === "builder" || item.id === "settings" || isSectionEnabled(data, item.id));
   const projects = visibleProjects(data, user);
