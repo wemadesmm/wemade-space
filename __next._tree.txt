@@ -1,2 +1,2 @@
 :HL["/wemade-space/_next/static/css/c4562da0055edaea.css","style"]
-0:{"tree":{"name":"","param":null,"prefetchHints":16,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":0,"slots":null}}},"staleTime":300,"buildId":"DT3R-99b3aAeeNmWPhp07"}
+0:{"tree":{"name":"","param":null,"prefetchHints":16,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":0,"slots":null}}},"staleTime":300,"buildId":"ZolF34BXWSMblRrtGoC37"}
