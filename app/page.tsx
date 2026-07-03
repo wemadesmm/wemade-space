@@ -43,6 +43,7 @@ import {
   saveProject,
   saveSite,
   saveTask,
+  saveUser,
   signIn,
   signOut,
   signUp,
@@ -51,7 +52,7 @@ import {
 import { isSupabaseEnabled } from "@/lib/supabase";
 import { makeChange, loadSpaceData, saveSpaceData } from "@/lib/store";
 import { cn } from "@/lib/utils";
-import { DocumentItem, KnowledgeArticle, Project, SitePage, SpaceData, Status, Task, User } from "@/lib/types";
+import { DocumentItem, KnowledgeArticle, Project, Role, SitePage, SpaceData, Status, Task, User } from "@/lib/types";
 
 type Section =
   | "home"
@@ -236,9 +237,10 @@ export default function WemadeSpace() {
         setRemoteMode(true);
         setNotice("");
       } catch (error) {
+        const message = error instanceof Error ? error.message : "Не удалось загрузить Supabase-данные";
         setRemoteMode(false);
-        setData(loadSpaceData());
-        setNotice(error instanceof Error ? error.message : "Не удалось загрузить Supabase-данные");
+        setAuth({ enabled: true, loading: false, supabaseUser: null, error: message });
+        setNotice(message);
       } finally {
         setLoadingData(false);
       }
@@ -443,7 +445,16 @@ export default function WemadeSpace() {
               {section === "meditation" && <SimpleView title="Медитация" icon={Wind} items={["2 минуты перед сложным созвоном", "Дыхание после правок", "Фокус-режим на 25 минут"]} />}
               {section === "feedback" && <SimpleView title={isClient(user) ? "Запросы" : "Обратная связь"} icon={PenLine} items={["Создать запрос", "Предложить улучшение", "Сообщить о риске", "Попросить помощь"]} />}
               {section === "builder" && !isClient(user) && <BuilderView data={data} onSave={updateSite} />}
-              {section === "settings" && <SettingsView user={user} />}
+              {section === "settings" && (
+                <SettingsView
+                  data={data}
+                  user={user}
+                  onSaveUser={(nextUser) => {
+                    commit({ ...data, users: data.users.map((item) => (item.id === nextUser.id ? nextUser : item)) }, "Доступ", "роль пользователя обновлена");
+                    void persistRemote("Доступ", "роль пользователя обновлена", () => saveUser(nextUser));
+                  }}
+                />
+              )}
             </section>
 
             <aside className="space-y-5">
@@ -817,10 +828,10 @@ function BuilderView({ data, onSave }: { data: SpaceData; onSave: (site: SpaceDa
             </div>
           </Card>
 
-          <Card title="Как это станет настоящим сайтом">
+          <Card title="Публикация">
             <div className="space-y-3 text-sm text-wm-muted">
-              <p>Сейчас конструктор сохраняет изменения в браузере. Для команды и клиентов эти же настройки нужно хранить в Supabase.</p>
-              <p>После подключения базы, авторизации и деплоя люди смогут заходить по домену, работать под своими ролями и видеть общие данные.</p>
+              <p>Изменения конструктора сохраняются в общей базе Supabase и видны всем пользователям после обновления страницы.</p>
+              <p>Разделы сайта, роли и данные работают через единое пространство команды и клиентов.</p>
             </div>
           </Card>
         </aside>
@@ -911,8 +922,47 @@ function MiniGame() {
   return <Stack title="Мини-игра"><div className="rounded-xl border border-wm-line bg-white p-6 text-center"><p className="text-sm text-wm-muted">Нажимайте, чтобы собрать фокус-баллы между задачами.</p><button onClick={() => setScore(score + 1)} className="mt-5 rounded-xl border-2 border-wm-lime bg-wm-blue px-8 py-5 text-3xl font-black text-white">{score}</button></div></Stack>;
 }
 
-function SettingsView({ user }: { user: User }) {
-  return <Stack title="Настройки"><Card title="Профиль"><p className="text-sm text-wm-muted">{user.name} · {roleLabels[user.role]}</p><p className="mt-2 text-sm text-wm-muted">Здесь предусмотрены профиль, уведомления, интеграции, доступы и подключение Supabase Auth.</p></Card></Stack>;
+function SettingsView({ data, user, onSaveUser }: { data: SpaceData; user: User; onSaveUser: (user: User) => void }) {
+  const canManageAccess = ["owner", "ops"].includes(user.role);
+  const roleOptions: Role[] = ["owner", "ops", "pm", "employee", "newcomer", "contractor", "client"];
+
+  return (
+    <Stack title="Настройки">
+      <div className="grid gap-5 xl:grid-cols-[1fr_1.2fr]">
+        <Card title="Профиль">
+          <div className="space-y-3 text-sm text-wm-muted">
+            <p><b className="text-wm-ink">{user.name}</b> · {roleLabels[user.role]}</p>
+            <p>{user.title || "Должность пока не указана"}</p>
+            <button onClick={() => void signOut()} className="btn-ghost">Выйти</button>
+          </div>
+        </Card>
+
+        {canManageAccess && (
+          <Card title="Доступы команды">
+            <div className="space-y-3">
+              {data.users.map((item) => (
+                <div key={item.id} className="grid gap-3 rounded-lg border border-wm-line bg-wm-bg p-3 md:grid-cols-[1fr_180px] md:items-center">
+                  <div className="min-w-0">
+                    <p className="truncate font-bold">{item.name}</p>
+                    <p className="text-xs text-wm-muted">{item.title || "Без должности"}</p>
+                  </div>
+                  <select
+                    value={item.role}
+                    onChange={(event) => onSaveUser({ ...item, role: event.target.value as Role })}
+                    className="rounded-lg border border-wm-line bg-white px-3 py-2 text-sm"
+                  >
+                    {roleOptions.map((role) => (
+                      <option key={role} value={role}>{roleLabels[role]}</option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+      </div>
+    </Stack>
+  );
 }
 
 function ProjectLine({ data, project }: { data: SpaceData; project: Project }) {

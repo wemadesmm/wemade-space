@@ -1,5 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 
+let browserClient: ReturnType<typeof createClient> | null = null;
+
 export function getSupabaseClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -8,7 +10,11 @@ export function getSupabaseClient() {
     return null;
   }
 
-  return createClient(url, anonKey);
+  if (!browserClient) {
+    browserClient = createClient(url, anonKey);
+  }
+
+  return browserClient;
 }
 
 export function isSupabaseEnabled() {

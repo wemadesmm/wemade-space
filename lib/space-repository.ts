@@ -138,6 +138,16 @@ export async function saveTask(task: Task) {
   });
 }
 
+export async function saveUser(user: User) {
+  await upsert("profiles", {
+    id: user.id,
+    full_name: user.name,
+    role: user.role,
+    company_id: user.companyId || null,
+    title: user.title || ""
+  });
+}
+
 export async function saveDocument(document: DocumentItem) {
   await upsert("documents", {
     id: document.id,
@@ -163,7 +173,7 @@ export async function saveArticle(article: KnowledgeArticle) {
 
 export async function saveSite(site: SiteSettings) {
   const supabase = requiredClient();
-  const { data: existing } = await supabase.from("site_settings").select("id").limit(1).maybeSingle();
+  const { data: existing } = await supabase.from("site_settings").select("id").limit(1).maybeSingle<{ id: string }>();
   const payload = {
     id: existing?.id,
     brand_name: site.brandName,
@@ -177,7 +187,7 @@ export async function saveSite(site: SiteSettings) {
     updated_at: new Date().toISOString()
   };
 
-  const { error } = await supabase.from("site_settings").upsert(payload);
+  const { error } = await (supabase.from("site_settings") as any).upsert(payload);
   if (error) throw new Error(error.message);
 
   await upsertMany(
@@ -208,25 +218,25 @@ export async function saveSite(site: SiteSettings) {
 
 export async function writeChange(entity: string, action: string) {
   const supabase = requiredClient();
-  const { error } = await supabase.from("change_log").insert({ entity, action, actor_id: (await supabase.auth.getUser()).data.user?.id ?? null });
+  const { error } = await (supabase.from("change_log") as any).insert({ entity, action, actor_id: (await supabase.auth.getUser()).data.user?.id ?? null });
   if (error) throw new Error(error.message);
 }
 
 async function selectAll(supabase: SupabaseClient, table: string) {
-  const { data, error } = await supabase.from(table).select("*");
+  const { data, error } = await (supabase.from(table) as any).select("*");
   if (error) throw new Error(error.message);
   return data ?? [];
 }
 
 async function upsert(table: string, payload: Record<string, unknown>) {
   const supabase = requiredClient();
-  const { error } = await supabase.from(table).upsert(payload);
+  const { error } = await (supabase.from(table) as any).upsert(payload);
   if (error) throw new Error(error.message);
 }
 
 async function upsertMany(table: string, payload: Record<string, unknown>[]) {
   const supabase = requiredClient();
-  const { error } = await supabase.from(table).upsert(payload);
+  const { error } = await (supabase.from(table) as any).upsert(payload);
   if (error) throw new Error(error.message);
 }
 
